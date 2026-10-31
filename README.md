@@ -2,15 +2,16 @@
 
 A Deep Q-Network that teaches itself Tic-Tac-Toe purely through self-play, trained on a Google Colab T4 GPU. The included model plays **perfectly**: it picks a game-theoretically optimal move in every one of the 4,520 positions that can occur in a game, so it never loses.
 
-You can play against it in a desktop app or directly inside a Colab notebook. Both need only NumPy to run the model, so it loads instantly and replies in about a millisecond.
+You can play against it in your browser, in a desktop app or inside a Colab notebook. All three run the network locally, with no server and no ML library, and reply in a few milliseconds.
 
-![Desktop app](docs/screenshot.png)
+![Web player](docs/web-screenshot.png)
 
 ## Contents
 
 - [Results](#results)
 - [Quick start](#quick-start)
 - [Repository structure](#repository-structure)
+- [Web player](#web-player)
 - [Playing](#playing)
 - [Training](#training)
 - [How it works](#how-it-works)
@@ -30,13 +31,24 @@ Measured on the included `tictactoe_dqn.npz` with the evaluation built into `tra
 | vs perfect opponent, model plays O | 100% draws, 0 losses |
 | vs random opponent, model plays X | 90.95% wins, 9.05% draws, 0 losses |
 | vs random opponent, model plays O | 79.97% wins, 20.02% draws, 0 losses |
-| Move time (NumPy, CPU) | about 1 ms |
+| Move time, desktop app (NumPy) | about 1 ms |
+| Move time, web player (JavaScript) | 1–3 ms |
 
 ¹ Positions where at least one legal move throws the result away, such as failing to block or missing a win.
 
 Tic-Tac-Toe is a draw with best play, so against a perfect opponent every game ends drawn. Against a random opponent the win rate depends on how many mistakes that opponent makes; the figure that matters is **0 losses**.
 
 ## Quick start
+
+### Play in your browser
+
+Open the project's GitHub Pages site (see [Publishing on GitHub Pages](#publishing-on-github-pages)), or preview it locally:
+
+```bash
+python -m http.server -d docs
+```
+
+Then open <http://localhost:8000>. Opening `docs/index.html` directly as a file won't work, because browsers block it from loading the model.
 
 ### Play on your computer
 
@@ -72,9 +84,60 @@ If the model isn't found, the cell asks you to upload `tictactoe_dqn.npz`.
 ├── play_dqn.py          # desktop app (tkinter + NumPy)
 ├── play_colab.py        # clickable board for Colab / Jupyter (ipywidgets + NumPy)
 ├── tictactoe_dqn.npz    # trained model (804,874 parameters, about 3.2 MB)
-└── docs/
-    └── screenshot.png
+├── tools/
+│   └── export_web_model.py   # converts the .npz model for the web player and verifies it
+└── docs/                # the web player, published with GitHub Pages
+    ├── index.html
+    ├── assets/
+    │   ├── app.js       # board, game flow, animations and settings
+    │   ├── model.js     # loads the weights and runs the network
+    │   └── style.css
+    ├── model/
+    │   ├── model.json   # layer shapes, checksum and evaluation summary
+    │   └── weights.bin  # weights at half precision (1.6 MB)
+    ├── web-screenshot.png
+    └── screenshot.png   # desktop app
 ```
+
+## Web player
+
+A single static page in `docs/` that runs the network itself in JavaScript. It has no dependencies and no build step, and no server is involved after the page loads.
+
+- **Same brain as the desktop app.** It uses the same network, the same board encoding and the same varied-move rule as `play_dqn.py`.
+- **Small download.** Weights are stored at half precision: 1.6 MB instead of 3.2 MB. At half precision the model still picks an optimal move in all 4,520 positions; `tools/export_web_model.py` checks this on every export. The page also verifies the file's SHA-256 checksum before using it.
+- **Fast.** A move takes 1–3 ms, and the network is warmed up right after loading so even the first move is instant.
+- **Interface.**
+  - Marks draw themselves like pen strokes, and the winning line is drawn in gold.
+  - A preview of your mark appears when you hover over a square.
+  - A *model outlook* meter shows what the network expects after each move: its Q-value, the square it chose and how long the move took.
+  - Light and dark themes are included.
+- **Controls.** Play as X or O, New game (or **N**), keys **1–9**, Reset score, and switches for varied moves and animations. Animations default to off when the system's "reduce motion" setting is on.
+- **Remembered between visits.** Your score, side, switches and theme are saved in the browser.
+- **Phones and tablets.** On screens narrower than 900 px the layout becomes one column:
+  - the score with **New game** and **Reset score** at the top;
+  - then the board, where a **New game** button appears once a game ends;
+  - then the status, model outlook and settings.
+- **Accessibility.** Squares are real buttons with descriptive labels, everything works from the keyboard, and status changes are marked for screen readers to announce.
+
+### Publishing on GitHub Pages
+
+1. Push the repository to GitHub.
+2. Open **Settings → Pages**.
+3. Under **Build and deployment**, choose **Deploy from a branch**, select your main branch and the **/docs** folder, then **Save**.
+4. After a minute the game is live at `https://<your-user-name>.github.io/<repository-name>/`.
+
+`docs/.nojekyll` tells GitHub Pages to serve the files exactly as they are.
+
+### Updating the web model
+
+After training a new model, export it for the web player:
+
+```bash
+python tools/export_web_model.py              # reads tictactoe_dqn.npz
+python tools/export_web_model.py path/to/model.npz --float32   # optional: full precision (3.2 MB)
+```
+
+The script rewrites `docs/model/` and reports how many of the 4,520 positions the exported weights play perfectly. It warns if half precision ever costs accuracy or makes varied moves unsafe. The page adds the checksum to the weights URL, so visitors always get the new file rather than a cached old one.
 
 ## Playing
 
@@ -266,8 +329,9 @@ Pass `rng=np.random.default_rng()` to `choose` to get [varied moves](#varied-mov
 
 | Part | Needs |
 | --- | --- |
+| Web player | Any modern browser (ES modules, `fetch`, SVG). Hosting is any static file server, such as GitHub Pages |
 | Training | Google Colab with a T4 GPU; PyTorch 2.x and NumPy (preinstalled on Colab); matplotlib optional, for the training curves |
 | Desktop app | Python 3 with NumPy and tkinter |
 | Colab board | NumPy and ipywidgets (preinstalled on Colab) |
 
-The desktop app has been tested with Python 3.9, NumPy 2.0 and Tk 8.6 on Windows 11.
+The desktop app has been tested with Python 3.9, NumPy 2.0 and Tk 8.6 on Windows 11. The web player has been tested in Microsoft Edge (Chromium) at desktop, laptop and phone sizes, and its JavaScript network has been checked against the Python version on every reachable position.
